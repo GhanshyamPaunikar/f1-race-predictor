@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>F1 Race Predictor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div id="app">
+    <!-- HEADER -->
+    <header class="header">
+      <div class="header-inner">
+        <div class="logo">
+          <span class="logo-f1">F1</span>
+          <span class="logo-text">RACE<br>PREDICTOR</span>
+        </div>
+        <nav class="nav">
+          <button
+            v-for="tab in tabs" :key="tab.id"
+            class="nav-btn"
+            :class="{ active: activeTab === tab.id }"
+            @click="activeTab = tab.id"
+          >{{ tab.label }}</button>
+        </nav>
+        <div class="header-right">
+          <div class="model-status" :class="modelStatusClass">
+            <span class="status-dot"></span>
+            <span class="status-text">{{ modelStatusLabel }}</span>
+          </div>
+          <div class="year-selector">
+            <button @click="changeYear(-1)" class="year-btn">‹</button>
+            <span class="year-display">{{ currentYear }}</span>
+            <button @click="changeYear(1)" class="year-btn">›</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- TRAINING BANNER -->
+    <div v-if="isTraining" class="training-banner">
+      <div class="training-inner">
+        <div class="spinner"></div>
+        <span>{{ trainingMessage }}</span>
+        <div class="progress-track">
+          <div class="progress-fill" :style="{ width: trainingProgress + '%' }"></div>
+        </div>
+        <span class="progress-pct">{{ trainingProgress }}%</span>
+      </div>
+    </div>
+
+    <!-- MAIN -->
+    <main class="main">
+
+      <!-- ── PREDICTIONS TAB ─────────────────────────────── -->
+      <div v-if="activeTab === 'predictions'" class="tab-content">
+        <div class="predictions-layout">
+
+          <!-- Race selector sidebar -->
+          <aside class="race-sidebar">
+            <h3 class="sidebar-title">{{ currentYear }} CALENDAR</h3>
+            <div class="race-list">
+              <button
+                v-for="race in schedule"
+                :key="race.round"
+                class="race-item"
+                :class="{
+                  active: selectedRound === race.round,
+                  past: race.is_past,
+                  upcoming: race.is_upcoming
+                }"
+                @click="selectRace(race.round)"
+              >
+                <span class="race-round">R{{ race.round }}</span>
+                <div class="race-info">
+                  <span class="race-country">{{ race.country }}</span>
+                  <span class="race-circuit">{{ race.circuit }}</span>
+                  <span class="race-date">{{ formatDate(race.date) }}</span>
+                </div>
+                <span v-if="race.is_past" class="race-badge past-badge">DONE</span>
+                <span v-else class="race-badge upcoming-badge">UP NEXT</span>
+              </button>
+            </div>
+          </aside>
+
+          <!-- Prediction panel -->
+          <section class="prediction-panel">
+            <div v-if="loadingPrediction" class="loading-state">
+              <div class="spinner large"></div>
+              <p>Loading prediction…</p>
+            </div>
+
+            <div v-else-if="prediction" class="prediction-content">
+              <!-- Race header -->
+              <div class="race-header-card">
+                <div class="race-header-left">
+                  <span class="race-flag">{{ countryFlag(prediction.race.country) }}</span>
+                  <div>
+                    <h1 class="race-title">{{ prediction.race.name }}</h1>
+                    <p class="race-meta">
+                      {{ prediction.race.circuit }} · {{ formatDate(prediction.race.date) }}
+                      <span v-if="prediction.race.has_result" class="result-badge">RESULTS IN</span>
+                    </p>
+                  </div>
+                </div>
+                <div v-if="!prediction.model_trained" class="warning-badge">
+                  Model training… using grid order estimate
+                </div>
+              </div>
+
+              <!-- Top 3 podium -->
+              <div class="podium-section">
+                <h2 class="section-title">PREDICTED PODIUM</h2>
+                <div class="podium">
+                  <!-- P2 -->
+                  <div class="podium-card p2" v-if="prediction.predictions[1]">
+                    <div class="podium-pos">P2</div>
+                    <div class="driver-circle" :style="{ borderColor: prediction.predictions[1].team_color }">
+                      {{ driverInitials(prediction.predictions[1].name) }}
+                    </div>
+                    <div class="podium-name">{{ shortName(prediction.predictions[1].name) }}</div>
+                    <div class="podium-team" :style="{ color: prediction.predictions[1].team_color }">
+                      {{ prediction.predictions[1].team }}
+                    </div>
+                    <div class="win-prob">{{ pct(prediction.predictions[1].win_probability) }}%</div>
+                    <div class="podium-bar p2-bar"></div>
+                  </div>
+                  <!-- P1 -->
+                  <div class="podium-card p1" v-if="prediction.predictions[0]">
+                    <div class="podium-trophy">🏆</div>
+                    <div class="podium-pos p1-pos">P1</div>
+                    <div class="driver-circle large" :style="{ borderColor: prediction.predictions[0].team_color }">
+                      {{ driverInitials(prediction.predictions[0].name) }}
+                    </div>
+                    <div class="podium-name">{{ shortName(prediction.predictions[0].name) }}</div>
+                    <div class="podium-team" :style="{ color: prediction.predictions[0].team_color }">
+                      {{ prediction.predictions[0].team }}
+                    </div>
+                    <div class="win-prob highlight">{{ pct(prediction.predictions[0].win_probability) }}%</div>
+                    <div class="podium-bar p1-bar"></div>
+                  </div>
+                  <!-- P3 -->
+                  <div class="podium-card p3" v-if="prediction.predictions[2]">
+                    <div class="podium-pos">P3</div>
+                    <div class="driver-circle" :style="{ borderColor: prediction.predictions[2].team_color }">
+                      {{ driverInitials(prediction.predictions[2].name) }}
+                    </div>
+                    <div class="podium-name">{{ shortName(prediction.predictions[2].name) }}</div>
+                    <div class="podium-team" :style="{ color: prediction.predictions[2].team_color }">
+                      {{ prediction.predictions[2].team }}
+                    </div>
+                    <div class="win-prob">{{ pct(prediction.predictions[2].win_probability) }}%</div>
+                    <div class="podium-bar p3-bar"></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Full grid predictions -->
+              <div class="grid-section">
+                <h2 class="section-title">FULL RACE PREDICTION</h2>
+                <div class="grid-table">
+                  <div class="grid-header">
+                    <span>POS</span>
+                    <span>DRIVER</span>
+                    <span>TEAM</span>
+                    <span>GRID</span>
+                    <span>WIN %</span>
+                    <span>CONF %</span>
+                    <span v-if="prediction.race.has_result" class="actual-header">ACTUAL</span>
+                  </div>
+                  <div
+                    v-for="p in prediction.predictions"
+                    :key="p.driver_id"
+                    class="grid-row"
+                    :class="{
+                      podium: p.predicted_position <= 3,
+                      points: p.predicted_position > 3 && p.predicted_position <= 10,
+                      correct: isCorrect(p),
+                      wrong: isWrong(p),
+                    }"
+                  >
+                    <span class="pos-badge" :class="posClass(p.predicted_position)">
+                      {{ p.predicted_position }}
+                    </span>
+                    <span class="driver-name-cell">
+                      <span class="team-dot" :style="{ background: p.team_color }"></span>
+                      {{ p.name }}
+                    </span>
+                    <span class="team-name-cell" :style="{ color: p.team_color }">{{ p.team }}</span>
+                    <span class="grid-pos-cell">P{{ p.grid }}</span>
+                    <span class="win-pct-cell">{{ pct(p.win_probability) }}%</span>
+                    <span class="conf-cell">
+                      <div class="conf-bar-wrap">
+                        <div class="conf-bar" :style="{ width: (p.confidence * 100) + '%', background: confColor(p.confidence) }"></div>
+                      </div>
+                      <span class="conf-pct">{{ pct(p.confidence) }}%</span>
+                    </span>
+                    <span v-if="prediction.race.has_result" class="actual-cell">
+                      <span v-if="prediction.actual_results[p.driver_id]">
+                        P{{ prediction.actual_results[p.driver_id] }}
+                        <span v-if="prediction.actual_results[p.driver_id] === p.predicted_position" class="tick">✓</span>
+                      </span>
+                      <span v-else class="muted">—</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div v-else class="empty-state">
+              <div class="empty-icon">🏎️</div>
+              <p>Select a race from the calendar to see predictions</p>
+            </div>
+          </section>
+
+          <!-- Feature importance chart -->
+          <aside v-if="prediction && prediction.feature_importance" class="feature-sidebar">
+            <h3 class="sidebar-title">FEATURE IMPORTANCE</h3>
+            <canvas id="featureChart" height="320"></canvas>
+            <div class="accuracy-card" v-if="modelMetrics">
+              <div class="accuracy-title">MODEL ACCURACY</div>
+              <div class="accuracy-row">
+                <span>CV MAE</span>
+                <span class="accuracy-val">{{ modelMetrics.cv_mae?.toFixed(2) }} pos</span>
+              </div>
+              <div class="accuracy-row">
+                <span>Training Samples</span>
+                <span class="accuracy-val">{{ modelMetrics.n_samples?.toLocaleString() }}</span>
+              </div>
+              <div class="accuracy-row">
+                <span>Seasons Used</span>
+                <span class="accuracy-val">{{ modelMetrics.n_races }}</span>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+
+      <!-- ── STANDINGS TAB ───────────────────────────────── -->
+      <div v-if="activeTab === 'standings'" class="tab-content">
+        <div class="standings-layout">
+          <section class="standings-section">
+            <h2 class="section-title">DRIVER CHAMPIONSHIP</h2>
+            <div v-if="loadingStandings" class="loading-state"><div class="spinner"></div></div>
+            <div v-else class="standings-table">
+              <div class="standings-header">
+                <span>POS</span><span>DRIVER</span><span>TEAM</span><span>WINS</span><span>POINTS</span>
+              </div>
+              <div
+                v-for="s in driverStandings"
+                :key="s.driver_id"
+                class="standings-row"
+                :class="{ leader: s.position === 1 }"
+              >
+                <span class="standings-pos">{{ s.position }}</span>
+                <span class="standings-driver">
+                  <span class="team-bar" :style="{ background: s.team_color }"></span>
+                  {{ s.name }}
+                </span>
+                <span :style="{ color: s.team_color }" class="standings-team">{{ s.team }}</span>
+                <span class="standings-wins">{{ s.wins }}</span>
+                <span class="standings-pts">{{ s.points }}</span>
+                <div class="points-bar-wrap">
+                  <div class="points-bar"
+                    :style="{
+                      width: (s.points / driverStandings[0].points * 100) + '%',
+                      background: s.team_color
+                    }">
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="standings-section">
+            <h2 class="section-title">CONSTRUCTOR CHAMPIONSHIP</h2>
+            <div v-if="loadingStandings" class="loading-state"><div class="spinner"></div></div>
+            <div v-else class="standings-table">
+              <div class="standings-header">
+                <span>POS</span><span>TEAM</span><span>WINS</span><span>POINTS</span>
+              </div>
+              <div
+                v-for="s in constructorStandings"
+                :key="s.team_id"
+                class="standings-row"
+                :class="{ leader: s.position === 1 }"
+              >
+                <span class="standings-pos">{{ s.position }}</span>
+                <span class="standings-driver">
+                  <span class="team-bar" :style="{ background: s.team_color }"></span>
+                  {{ s.name }}
+                </span>
+                <span class="standings-wins">{{ s.wins }}</span>
+                <span class="standings-pts">{{ s.points }}</span>
+                <div class="points-bar-wrap">
+                  <div class="points-bar"
+                    :style="{
+                      width: (s.points / constructorStandings[0].points * 100) + '%',
+                      background: s.team_color
+                    }">
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- ── MODEL TAB ───────────────────────────────────── -->
+      <div v-if="activeTab === 'model'" class="tab-content">
+        <div class="model-layout">
+          <div class="model-card">
+            <h2>ML ARCHITECTURE</h2>
+            <div class="model-grid">
+              <div class="model-item" v-for="m in modelInfo" :key="m.label">
+                <span class="model-label">{{ m.label }}</span>
+                <span class="model-val">{{ m.value }}</span>
+              </div>
+            </div>
+            <button class="retrain-btn" @click="retrain" :disabled="isTraining">
+              <span v-if="isTraining">Training…</span>
+              <span v-else">⟳ Retrain Model</span>
+            </button>
+          </div>
+
+          <div class="model-card" v-if="modelMetrics">
+            <h2>PERFORMANCE METRICS</h2>
+            <div class="metric-grid">
+              <div class="metric-item">
+                <span class="metric-num">{{ modelMetrics.cv_mae?.toFixed(2) }}</span>
+                <span class="metric-label">CV Mean Absolute Error (positions)</span>
+              </div>
+              <div class="metric-item">
+                <span class="metric-num">± {{ modelMetrics.cv_mae_std?.toFixed(2) }}</span>
+                <span class="metric-label">Standard Deviation</span>
+              </div>
+              <div class="metric-item">
+                <span class="metric-num">{{ modelMetrics.n_samples?.toLocaleString() }}</span>
+                <span class="metric-label">Training Samples</span>
+              </div>
+              <div class="metric-item">
+                <span class="metric-num">{{ modelMetrics.n_races }}</span>
+                <span class="metric-label">Races in Training Data</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="model-card feature-card" v-if="modelMetrics?.feature_importance">
+            <h2>FEATURE IMPORTANCE (XGBoost)</h2>
+            <div class="feature-list">
+              <div
+                v-for="(val, key) in sortedFeatures"
+                :key="key"
+                class="feature-row"
+              >
+                <span class="feature-name">{{ featureLabel(key) }}</span>
+                <div class="feature-bar-wrap">
+                  <div class="feature-bar" :style="{ width: (val * 100) + '%' }"></div>
+                </div>
+                <span class="feature-pct">{{ (val * 100).toFixed(1) }}%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
