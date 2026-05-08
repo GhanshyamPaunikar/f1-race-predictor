@@ -221,7 +221,7 @@
           <!-- Feature importance chart -->
           <aside v-if="prediction && prediction.feature_importance" class="feature-sidebar">
             <h3 class="sidebar-title">FEATURE IMPORTANCE</h3>
-            <canvas id="featureChart" height="320"></canvas>
+            <div class="feature-chart-wrap"><canvas id="featureChart"></canvas></div>
             <div class="accuracy-card" v-if="modelMetrics">
               <div class="accuracy-title">MODEL ACCURACY</div>
               <div class="accuracy-row">

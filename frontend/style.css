@@ -341,6 +341,7 @@ body {
   border-radius: var(--radius); padding: 16px;
   position: sticky; top: 82px;
 }
+.feature-chart-wrap { position: relative; height: 320px; }
 
 .accuracy-card {
   margin-top: 16px; padding: 14px;
